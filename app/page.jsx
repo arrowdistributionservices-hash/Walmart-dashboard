@@ -30,7 +30,9 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/walmart-data?start=${startDate}&end=${endDate}`);
+      const res = await fetch(`/api/walmart-data?start=${startDate}&end=${endDate}`, {
+        cache: "no-store",
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load data");
       setData(json);
