@@ -108,14 +108,17 @@ export async function GET(request) {
       { ordersRev: 0, incentive: 0, walmartTotal: 0, sellerboardRev: 0 }
     );
 
-    return NextResponse.json({
-      range: { startDate, endDate },
-      totals,
-      daily,
-      orderLevel,
-      sellerboardMeta: sbMeta,
-      generatedAt: new Date().toISOString(),
-    });
+    return NextResponse.json(
+      {
+        range: { startDate, endDate },
+        totals,
+        daily,
+        orderLevel,
+        sellerboardMeta: sbMeta,
+        generatedAt: new Date().toISOString(),
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
