@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
 import { addCostSheetCsv } from "../../../lib/storage";
 import { parseCostSheetCsvText, mergeCostSheets } from "../../../lib/costSheetCsv";
+import { ACCOUNTS } from "../../../lib/accounts";
 
 export async function POST(request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const accountId = formData.get("account") || ACCOUNTS[0].id;
     if (!file) {
       return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
     }
 
     const csvText = await file.text();
 
-    // Validate it parses before saving, so a bad file doesn't silently
-    // break the dashboard for everyone.
     const { entries, blocksFound } = parseCostSheetCsvText(csvText);
     if (entries.length === 0) {
       return NextResponse.json(
@@ -25,11 +25,12 @@ export async function POST(request) {
       );
     }
 
-    const allUploads = await addCostSheetCsv(csvText, file.name);
+    const allUploads = await addCostSheetCsv(accountId, csvText, file.name);
     const merged = mergeCostSheets(allUploads.map((u) => u.csvText));
 
     return NextResponse.json({
       success: true,
+      accountId,
       entryCount: entries.length,
       blocksFound,
       filename: file.name,
@@ -40,4 +41,3 @@ export async function POST(request) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
 }
-
