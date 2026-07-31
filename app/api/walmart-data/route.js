@@ -5,6 +5,8 @@ import { ACCOUNTS } from "../../../lib/accounts";
 export const dynamic = "force-dynamic"; // never cache - always fetch fresh Walmart data
 export const maxDuration = 60;
 
+const CORS_HEADERS = { "Access-Control-Allow-Origin": "*" };
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -26,12 +28,21 @@ export async function GET(request) {
           configured: false,
           error: `Walmart API credentials for ${data.accountName} haven't been added to Vercel yet.`,
         },
-        { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
+        { status: 200, headers: { "Cache-Control": "no-store, max-age=0", ...CORS_HEADERS } }
       );
     }
 
-    return NextResponse.json(data, { headers: { "Cache-Control": "no-store, max-age=0" } });
+    return NextResponse.json(data, { headers: { "Cache-Control": "no-store, max-age=0", ...CORS_HEADERS } });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500, headers: CORS_HEADERS });
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+    },
+  });
 }
