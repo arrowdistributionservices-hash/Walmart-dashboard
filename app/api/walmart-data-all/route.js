@@ -5,6 +5,8 @@ import { computeAccountData } from "../../../lib/computeAccountData";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
+const CORS_HEADERS = { "Access-Control-Allow-Origin": "*" };
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -58,9 +60,18 @@ export async function GET(request) {
         })),
         generatedAt: new Date().toISOString(),
       },
-      { headers: { "Cache-Control": "no-store, max-age=0" } }
+      { headers: { "Cache-Control": "no-store, max-age=0", ...CORS_HEADERS } }
     );
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500, headers: CORS_HEADERS });
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+    },
+  });
 }
