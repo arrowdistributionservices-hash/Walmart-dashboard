@@ -86,5 +86,55 @@ export async function GET(request) {
     }
   }
 
-  return NextResponse.json({ accountId, env, baseUrl, results });
+  // Probe: does a real inbound shipment have a per-SKU item breakdown? Grab a
+  // real shipmentId from the list above and test candidate item-detail paths
+  // against it, so we know whether "Inbound to WFS" dollar value is even
+  // computable before building anything on top of a guess.
+  const shipmentListResult = results.find((r) => r.path === "/v3/fulfillment/inbound-shipments" && r.ok);
+  let itemDetailResults = null;
+  if (shipmentListResult) {
+    try {
+      const fullRes = await fetch(`${baseUrl}/v3/fulfillment/inbound-shipments`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "WM_SVC.NAME": "Walmart Marketplace",
+          "WM_QOS.CORRELATION_ID": crypto.randomUUID(),
+          "WM_SEC.ACCESS_TOKEN": token,
+          Accept: "application/json",
+        },
+      });
+      const fullData = await fullRes.json();
+      const list = fullData?.payload?.shipments || fullData?.payload || [];
+      const sample = Array.isArray(list) ? list.find((s) => s.shipmentId) : null;
+      if (sample?.shipmentId) {
+        const itemCandidatePaths = [
+          `/v3/fulfillment/inbound-shipments/${sample.shipmentId}/items`,
+          `/v3/fulfillment/inbound-shipment/${sample.shipmentId}/items`,
+          `/v3/fulfillment/inbound-shipments/${sample.shipmentId}`,
+        ];
+        itemDetailResults = { sampleShipmentId: sample.shipmentId, tests: [] };
+        for (const p of itemCandidatePaths) {
+          try {
+            const r = await fetch(`${baseUrl}${p}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "WM_SVC.NAME": "Walmart Marketplace",
+                "WM_QOS.CORRELATION_ID": crypto.randomUUID(),
+                "WM_SEC.ACCESS_TOKEN": token,
+                Accept: "application/json",
+              },
+            });
+            const t = await r.text();
+            itemDetailResults.tests.push({ path: p, status: r.status, ok: r.ok, bodySnippet: t.slice(0, 1000) });
+          } catch (e) {
+            itemDetailResults.tests.push({ path: p, error: String(e) });
+          }
+        }
+      }
+    } catch (e) {
+      itemDetailResults = { error: String(e) };
+    }
+  }
+
+  return NextResponse.json({ accountId, env, baseUrl, results, itemDetailResults });
 }
