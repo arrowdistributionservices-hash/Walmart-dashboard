@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { ACCOUNTS } from "../../../lib/accounts";
 import { getAccountCredentials } from "../../../lib/accounts";
 import { getWfsSummary } from "../../../lib/walmartClient";
+import { getAllCostSheetCsvs } from "../../../lib/storage";
+import { mergeCostSheets } from "../../../lib/costSheetCsv";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,7 +24,9 @@ export async function GET() {
     ACCOUNTS.map(async (acct) => {
       const { configured } = getAccountCredentials(acct.id);
       if (!configured) return { accountId: acct.id, accountName: acct.name, configured: false };
-      const summary = await getWfsSummary(acct.id);
+      const uploads = await getAllCostSheetCsvs(acct.id);
+      const { costByKey } = mergeCostSheets(uploads.map((u) => u.csvText));
+      const summary = await getWfsSummary(acct.id, Object.keys(costByKey).length ? costByKey : null);
       return { accountId: acct.id, accountName: acct.name, configured: true, ...summary };
     })
   );
@@ -40,9 +44,20 @@ export async function GET() {
         inboundShipments: acc.inboundShipments + a.inbound.shipments,
         onHandUnits: acc.onHandUnits + a.onHand.units,
         availableUnits: acc.availableUnits + a.onHand.availableUnits,
+        onHandValue: acc.onHandValue + (a.onHand.value || 0),
+        onHandValueMatchedUnits: acc.onHandValueMatchedUnits + (a.onHand.matchedUnits || 0),
+        onHandValueUnmatchedUnits: acc.onHandValueUnmatchedUnits + (a.onHand.unmatchedUnits || 0),
       };
     },
-    { inboundUnits: 0, inboundShipments: 0, onHandUnits: 0, availableUnits: 0 }
+    {
+      inboundUnits: 0,
+      inboundShipments: 0,
+      onHandUnits: 0,
+      availableUnits: 0,
+      onHandValue: 0,
+      onHandValueMatchedUnits: 0,
+      onHandValueUnmatchedUnits: 0,
+    }
   );
 
   return NextResponse.json(
