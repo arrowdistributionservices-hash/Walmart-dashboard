@@ -134,7 +134,7 @@ export default function Dashboard() {
               Note: Walmart publishes fee/commission data roughly every 2 weeks.
               {data?.settledThroughDate
                 ? ` Fee data is settled through ${data.settledThroughDate} - rows/orders marked with * are
-                after that; their fees/incentives are estimated from historical per-SKU and per-price-point trends
+                after that; their fees/incentives are estimated from each SKU's recent settlements
                 until Walmart's real numbers post.`
                 : " Rows/orders marked with * have fee data that isn't published yet - fees/incentives shown are estimated from historical trends, not final."}
             </p>
