@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { ACCOUNTS } from "../../../lib/accounts";
 import { getAccountCredentials } from "../../../lib/accounts";
 import { getWfsSummary } from "../../../lib/walmartClient";
-import { getAllCostSheetCsvs } from "../../../lib/storage";
-import { mergeCostSheets } from "../../../lib/costSheetCsv";
+import { loadAvgCosts } from "../../../lib/avgCosts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,9 +23,7 @@ export async function GET() {
     ACCOUNTS.map(async (acct) => {
       const { configured } = getAccountCredentials(acct.id);
       if (!configured) return { accountId: acct.id, accountName: acct.name, configured: false };
-      const uploads = await getAllCostSheetCsvs(acct.id);
-      const { costByKey } = mergeCostSheets(uploads.map((u) => u.csvText));
-      const summary = await getWfsSummary(acct.id, Object.keys(costByKey).length ? costByKey : null);
+      const summary = await getWfsSummary(acct.id, async (lines) => (await loadAvgCosts(acct, lines)).priceLine);
       return { accountId: acct.id, accountName: acct.name, configured: true, ...summary };
     })
   );

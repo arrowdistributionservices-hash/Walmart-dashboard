@@ -34,8 +34,6 @@ export default function Dashboard() {
   const [allData, setAllData] = useState(null); // /api/walmart-data-all response
   const [allLoading, setAllLoading] = useState(false);
 
-  const [costUploading, setCostUploading] = useState(false);
-  const [costUploadMsg, setCostUploadMsg] = useState(null);
 
   const [orderSearch, setOrderSearch] = useState("");
   const [shippingExpanded, setShippingExpanded] = useState(true);
@@ -97,32 +95,6 @@ export default function Dashboard() {
     loadAllData();
   }, [loadAllData]);
 
-  async function handleCostUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCostUploading(true);
-    setCostUploadMsg(null);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("account", activeAccount);
-      const res = await fetch("/api/upload-costsheet", { method: "POST", body: formData });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Upload failed");
-      setCostUploadMsg(
-        `Uploaded "${json.filename}" - ${json.entryCount} cost entries found. This is upload #${json.totalUploads}; ${json.totalTrackedItems} items are now tracked in total across all uploads. Upload more tabs any time - they add to this, they don't replace it.`
-      );
-      await loadData();
-      await loadAllData();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCostUploading(false);
-      e.target.value = "";
-    }
-  }
-
   const totals = data?.totals;
   const totalMarginPct = totals && totals.netAfterFees !== 0 ? (totals.profit / totals.netAfterFees) * 100 : null;
 
@@ -154,8 +126,8 @@ export default function Dashboard() {
         <div>
           <h1>Walmart Sales &amp; Profit</h1>
           <p>
-            Live from the Walmart Marketplace API. Profit is calculated from item costs in the
-            uploaded cost sheet, after Walmart's fees and commission.
+            Live from the Walmart Marketplace API. Profit is calculated from each client's Avg cost
+            per item in the Overage dashboard (their Profit Analysis sheet), after Walmart's fees and commission.
           </p>
           {data?.settledThroughDate !== undefined && (
             <p className="meta-note" style={{ marginTop: 4 }}>
@@ -169,16 +141,6 @@ export default function Dashboard() {
           )}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <label className="upload-label">
-            {costUploading ? "Uploading..." : "Upload Cost Sheet"}
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={handleCostUpload}
-              disabled={costUploading || !activeAccount}
-              style={{ display: "none" }}
-            />
-          </label>
         </div>
       </div>
 
@@ -259,21 +221,19 @@ export default function Dashboard() {
           Download Excel (all accounts)
         </a>
 
-        {data?.costSheetMeta && (
+        {data?.costSource && !data.costSource.error && (
           <span className="meta-note">
-            Cost sheet: {data.costSheetMeta.totalUploads} file(s) uploaded so far (
-            {data.costSheetMeta.uploadedFiles.join(", ")}) - last one "{data.costSheetMeta.filename}" on{" "}
-            {new Date(data.costSheetMeta.uploadedAt).toLocaleString()}
+            Item costs: Avg cost from{" "}
+            <a href={data.costSource.sheetUrl} target="_blank" rel="noreferrer">
+              {data.costSource.client}'s Profit Analysis sheet
+            </a>{" "}
+            via the Overage dashboard ({data.costSource.itemCount} items, read{" "}
+            {new Date(data.costSource.generatedAt).toLocaleString()}). Cronus Zen uses its latest tab's cost.
           </span>
         )}
       </div>
 
       {error && <div className="error-banner">{error}</div>}
-      {costUploadMsg && !error && (
-        <div className="error-banner" style={{ borderColor: "var(--good)", color: "var(--good)", background: "rgba(55,199,119,0.1)" }}>
-          {costUploadMsg}
-        </div>
-      )}
 
       {activeAccountMeta && !activeAccountMeta.configured && (
         <div className="empty-state" style={{ marginBottom: 24, borderColor: "var(--warn)" }}>
@@ -282,21 +242,25 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!data?.costSheetMeta && !loading && activeAccountMeta?.configured && (
-        <div className="empty-state" style={{ marginBottom: 24 }}>
-          No cost sheet uploaded yet for {activeAccountMeta?.name} - profit can't be calculated
-          without item costs. Upload a cost sheet (Title / UPC / Walmart ID / BuyCost columns)
-          using the button above. If your costs are spread across multiple Google Sheets tabs,
-          export and upload each tab's CSV one at a time - each upload adds to the total, it won't
-          erase earlier ones.
+      {data?.costSource?.error && !loading && (
+        <div className="empty-state" style={{ marginBottom: 24, borderColor: "var(--bad, #e5484d)" }}>
+          Item costs couldn't be loaded from the Overage dashboard, so no item costs are applied and
+          profit below is overstated: {data.costSource.error}
+        </div>
+      )}
+      {data?.costSource?.lookupErrorCount > 0 && !loading && (
+        <div className="empty-state" style={{ marginBottom: 24, borderColor: "var(--warn)" }}>
+          {data.costSource.lookupErrorCount} item lookup(s) against Walmart failed this load, so some sales may
+          show no cost until the next refresh. ({data.costSource.lookupErrors[0]})
         </div>
       )}
 
-      {coverage && !loading && coveragePct !== null && coveragePct < 90 && (
+      {coverage && !loading && coverage.unmatchedLines > 0 && (
         <div className="empty-state" style={{ marginBottom: 24, borderColor: "var(--bad, #e5484d)" }}>
           Cost data only covers {pct(coveragePct)} of revenue in this range ({coverage.unmatchedLines} of{" "}
           {coverage.totalLines} order line items have no matching cost - {fmt(coverage.unmatchedRevenue)} in
-          unmatched revenue). Profit figures below are understated until these are added to the cost sheet.
+          unmatched revenue). These items aren't on {activeAccountMeta?.name}'s Profit Analysis sheet, so they carry no
+          cost and profit below is overstated until they're added there.
           {coverage.topUnmatchedSkus?.length > 0 && (
             <div style={{ marginTop: 8, fontSize: "0.85em" }}>
               Top unmatched items:{" "}
@@ -422,7 +386,7 @@ export default function Dashboard() {
               }}
             >
               <span>Item Cost (COGS)</span>
-              <span title="From your uploaded cost sheet, not Walmart's settlement data - shown here for comparison, not part of the total above">
+              <span title="From the client's Avg cost in the Overage dashboard, not Walmart's settlement data - shown here for comparison, not part of the total above">
                 {fmt(totals?.itemCost)}
               </span>
             </div>
@@ -560,13 +524,13 @@ export default function Dashboard() {
                       (partial)
                     </span>
                   )}
-                  {o.costEstimated && (
+                  {o.costBasis === "latest" && (
                     <span
                       className="meta-note"
                       style={{ marginLeft: 4 }}
-                      title="Sold more units than are logged on any cost sheet for this item - the extra units are priced at the most recent known cost rather than an exact FIFO match"
+                      title="Priced at the latest order tab's cost rather than the Avg cost"
                     >
-                      (est.)
+                      (latest)
                     </span>
                   )}
                 </td>
